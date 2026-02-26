@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(del /f \"c:\\\\Users\\\\shaya\\\\harvey-pk\\\\app\\\\api\\\\debug\\\\db\\\\route.ts\")",
+      "Bash(powershell -Command \"Remove-Item -Recurse -Force ''c:\\\\Users\\\\shaya\\\\harvey-pk\\\\app\\\\api\\\\debug''\")",
+      "Bash(npm run build)"
+    ]
+  }
+}
