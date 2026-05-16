@@ -48,7 +48,10 @@
     "discover:pk:lhc:resume": "tsx scripts/extractors/discover-lhc-playwright.ts --out data/seeds/pakistan-lhc.csv --resume true",
     "discover:pk:sindh:test": "tsx scripts/extractors/discover-sindh-playwright.ts --max-years 3 --out data/seeds/pakistan-sindh-test.csv",
     "discover:pk:sindh:full": "tsx scripts/extractors/discover-sindh-playwright.ts --out data/seeds/pakistan-sindh.csv",
-    "discover:pk:sindh:resume": "tsx scripts/extractors/discover-sindh-playwright.ts --out data/seeds/pakistan-sindh.csv --resume true"
+    "discover:pk:sindh:resume": "tsx scripts/extractors/discover-sindh-playwright.ts --out data/seeds/pakistan-sindh.csv --resume true",
+    "extract:csv": "tsx scripts/extractors/extract-from-csv.ts",
+    "extract:pk:sindh:test": "tsx scripts/extractors/extract-from-csv.ts --seed data/seeds/pakistan-sindh.csv --tag sindh-statute --limit 10",
+    "extract:pk:sindh:full": "tsx scripts/extractors/extract-from-csv.ts --seed data/seeds/pakistan-sindh.csv --tag sindh-statute"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
