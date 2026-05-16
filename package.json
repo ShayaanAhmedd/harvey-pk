@@ -45,7 +45,10 @@
     "reextract:all:resume": "tsx scripts/extractors/reextract-all.ts",
     "discover:pk:lhc:test": "tsx scripts/extractors/discover-lhc-playwright.ts --max-pages 3 --out data/seeds/pakistan-lhc-test.csv",
     "discover:pk:lhc:full": "tsx scripts/extractors/discover-lhc-playwright.ts --out data/seeds/pakistan-lhc.csv",
-    "discover:pk:lhc:resume": "tsx scripts/extractors/discover-lhc-playwright.ts --out data/seeds/pakistan-lhc.csv --resume true"
+    "discover:pk:lhc:resume": "tsx scripts/extractors/discover-lhc-playwright.ts --out data/seeds/pakistan-lhc.csv --resume true",
+    "discover:pk:sindh:test": "tsx scripts/extractors/discover-sindh-playwright.ts --max-years 3 --out data/seeds/pakistan-sindh-test.csv",
+    "discover:pk:sindh:full": "tsx scripts/extractors/discover-sindh-playwright.ts --out data/seeds/pakistan-sindh.csv",
+    "discover:pk:sindh:resume": "tsx scripts/extractors/discover-sindh-playwright.ts --out data/seeds/pakistan-sindh.csv --resume true"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
