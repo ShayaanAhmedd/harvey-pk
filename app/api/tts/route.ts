@@ -61,7 +61,6 @@ export async function POST(req: Request) {
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "TTS failed";
-    console.error("[tts] OpenAI error:", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

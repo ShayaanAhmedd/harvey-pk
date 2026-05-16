@@ -99,8 +99,15 @@ export default function DocumentPanel({
         activeTab === "global"
           ? "/api/documents?scope=global"
           : `/api/documents?scope=case&caseId=${caseId}`;
+      console.log("[DocumentPanel] upload succeeded, re-fetching:", url);
       const listRes = await fetch(url);
-      if (listRes.ok) setDocuments(await listRes.json());
+      if (listRes.ok) {
+        const refreshed = await listRes.json();
+        console.log("[DocumentPanel] refreshed list length:", refreshed.length);
+        setDocuments(refreshed);
+      } else {
+        console.error("[DocumentPanel] refresh fetch failed:", listRes.status, await listRes.text().catch(() => ""));
+      }
     }
 
     setUploading(false);

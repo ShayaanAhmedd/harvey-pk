@@ -76,7 +76,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ text: result.text ?? "" });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : "Transcription failed";
-    console.error("[transcribe]", msg);
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }

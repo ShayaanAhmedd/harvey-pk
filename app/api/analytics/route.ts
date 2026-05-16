@@ -55,19 +55,6 @@ export async function GET() {
       .not("act_name", "is", null),
   ]);
 
-  if (sectionsRes.error) {
-    console.error("[analytics] sections count error:", sectionsRes.error.message);
-  }
-  if (embeddingsRes.error) {
-    console.error("[analytics] embeddings count error:", embeddingsRes.error.message);
-  }
-  if (globalDocsRes.error) {
-    console.error("[analytics] globalDocs count error:", globalDocsRes.error.message);
-  }
-  if (actNamesRes.error) {
-    console.error("[analytics] actNames fetch error:", actNamesRes.error.message);
-  }
-
   const totalActs = new Set(
     (actNamesRes.data ?? []).map((r) => r.act_name as string)
   ).size;

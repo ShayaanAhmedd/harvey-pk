@@ -1,0 +1,10 @@
+2026/03/10-21:18:56.527 72ac Reusing MANIFEST C:\Users\shaya\harvey-pk\.wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/MANIFEST-000001
+2026/03/10-21:18:56.527 72ac Recovering log #10
+2026/03/10-21:18:56.594 72ac Reusing old log C:\Users\shaya\harvey-pk\.wwebjs_auth\session\Default\IndexedDB\https_web.whatsapp.com_0.indexeddb.leveldb/000010.log 
+2026/03/10-21:19:00.116 8d04 Level-0 table #15: started
+2026/03/10-21:19:00.157 8d04 Level-0 table #15: 1165306 bytes OK
+2026/03/10-21:19:00.162 8d04 Delete type=0 #10
+2026/03/10-21:19:00.203 8d04 Compacting 1@1 + 1@2 files
+2026/03/10-21:19:00.391 8d04 Generated table #16@1: 38071 keys, 1567415 bytes
+2026/03/10-21:19:00.391 8d04 Compacted 1@1 + 1@2 files => 1567415 bytes
+2026/03/10-21:19:00.395 8d04 compacted to: files[ 0 0 1 0 0 0 0 ]

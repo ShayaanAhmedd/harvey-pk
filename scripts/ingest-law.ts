@@ -9,7 +9,8 @@ import dotenv from "dotenv";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import mammoth from "mammoth";
-import { chunkBySections } from "../lib/section-chunker";
+import { chunkBySections, type LegalChunk } from "../lib/section-chunker";
+import { embedTextLocal } from "../lib/local-embeddings";
 
 // ─────────────────────────────────────────────────────────────
 // ENV
@@ -70,6 +71,24 @@ async function extractText(filePath: string): Promise<string> {
     return result.text;
   }
 
+  if (ext === ".html" || ext === ".htm" || ext === ".xml") {
+    const cheerio = require("cheerio");
+    const $ = cheerio.load(buffer.toString("utf-8"));
+    // Strip noise
+    $("script, style, nav, header, footer, .footer, .header, .skip-link").remove();
+    // Prefer the main content container if legislation.gov.uk uses one
+    const main = $("#viewLegContents, #content, main, article").first();
+    const root = main.length > 0 ? main : $("body");
+    // Get text with paragraph breaks preserved
+    const text = root
+      .find("p, h1, h2, h3, h4, h5, h6, li")
+      .map((_: number, el: any) => $(el).text().trim())
+      .get()
+      .filter((t: string) => t.length > 0)
+      .join("\n\n");
+    return text || $("body").text();
+  }
+
   return buffer.toString("utf-8");
 }
 
@@ -78,12 +97,7 @@ async function extractText(filePath: string): Promise<string> {
 // ─────────────────────────────────────────────────────────────
 
 async function embed(text: string): Promise<number[]> {
-  const response = await openai.embeddings.create({
-    model: "text-embedding-3-small",
-    input: text,
-  });
-
-  return response.data[0].embedding;
+  return embedTextLocal(text);
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -98,6 +112,52 @@ function toSlug(s: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────
+// SECTION-BOUNDARY CHUNKER (--reingest mode only)
+// ─────────────────────────────────────────────────────────────
+//
+// Splits the full extracted text on canonical Pakistani statute section
+// headers: "<digits>[<letter-suffix>]. <Title text>". Each chunk runs
+// from one header to the next.
+//
+// Returns null if fewer than 10 headers are found — signals the caller
+// to fall back to the default chunker rather than degrade output.
+
+const SECTION_BOUNDARY_RE = /\n\s*(\d+[A-Z]?(?:-[A-Z])?)\.\s+([^\n]+)/g;
+
+function chunkBySectionBoundary(text: string): LegalChunk[] | null {
+  // Prefix with \n so a section header at offset 0 also matches.
+  const t = "\n" + text;
+  type Hit = { sectionNumber: string; title: string; start: number };
+  const hits: Hit[] = [];
+  SECTION_BOUNDARY_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = SECTION_BOUNDARY_RE.exec(t)) !== null) {
+    hits.push({
+      sectionNumber: m[1],
+      title:         (m[2] ?? "").trim(),
+      start:         m.index,
+    });
+  }
+  if (hits.length < 10) return null;
+
+  const out: LegalChunk[] = [];
+  for (let i = 0; i < hits.length; i++) {
+    const startIdx = hits[i].start;
+    const endIdx   = i + 1 < hits.length ? hits[i + 1].start : t.length;
+    const content  = t.slice(startIdx, endIdx).trim();
+    if (content.length < 20) continue;
+    out.push({
+      content,
+      chunk_index:    out.length,
+      section_number: hits[i].sectionNumber,
+      title:          hits[i].title || null,
+      chapter:        null,
+    });
+  }
+  return out.length >= 10 ? out : null;
+}
+
+// ─────────────────────────────────────────────────────────────
 // MAIN
 // ─────────────────────────────────────────────────────────────
 
@@ -109,9 +169,15 @@ async function main() {
   const yearStr = args["year"];
   const jurisdiction = args["jurisdiction"] ?? "Pakistan";
   const sourceUrl = args["source-url"] ?? null;
+  const reingestMode = args["reingest"] === "true";
 
   if (!fileArg || !actName) {
-    console.error("Usage: --file <path> --act <name> [--year N]");
+    console.error("Usage: --file <path> --act <name> [--year N] [--source-url URL] [--reingest]");
+    process.exit(1);
+  }
+
+  if (reingestMode && !sourceUrl) {
+    console.error("--reingest requires --source-url (used as the DELETE key for old chunks).");
     process.exit(1);
   }
 
@@ -130,6 +196,9 @@ async function main() {
     docx: "docx",
     pdf: "pdf",
     txt: "txt",
+    html: "html",
+    htm: "html",
+    xml: "xml",
   };
 
   const file_type = fileTypeMap[ext] ?? "other";
@@ -179,8 +248,22 @@ async function main() {
   // ─────────────────────────────────────────────────────────
 
   console.log("Chunking...");
-  const chunks = chunkBySections(cleanedText);
+  let chunks: LegalChunk[] = chunkBySections(cleanedText);
+  if (reingestMode) {
+    const boundary = chunkBySectionBoundary(cleanedText);
+    if (boundary && boundary.length >= 10) {
+      console.log(`[reingest] Section-boundary chunker: ${boundary.length} chunks (default chunker would yield ${chunks.length}).`);
+      chunks = boundary;
+    } else {
+      console.log(`[reingest] Section-boundary chunker found insufficient matches; falling back to default chunker (${chunks.length} chunks).`);
+    }
+  }
   console.log(`Found ${chunks.length} chunks.`);
+
+  // Cutoff timestamp for --reingest mode. Captured BEFORE the first insert
+  // so we can DELETE rows with created_at < cutoff (i.e. the old chunks)
+  // only after every new chunk has been successfully written.
+  const reingestCutoffIso = reingestMode ? new Date().toISOString() : null;
 
   // ─────────────────────────────────────────────────────────
   // EMBED + INSERT
@@ -192,9 +275,12 @@ async function main() {
   for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
     const batch = chunks.slice(i, i + BATCH_SIZE);
 
-    const embeddings = await Promise.all(
-      batch.map((c) => embed(c.content))
-    );
+    // CPU-bound: embed sequentially. Parallelism via Promise.all on a
+    // single CPU core doesn't help and can hurt (context-switching).
+    const embeddings: number[][] = [];
+    for (const c of batch) {
+      embeddings.push(await embed(c.content));
+    }
 
     const rows = batch.map((chunk, j) => ({
       case_id: null,
@@ -230,6 +316,33 @@ async function main() {
   }
 
   console.log(`\n\nDone. Ingested ${inserted} sections for "${actName}".`);
+
+  // ─────────────────────────────────────────────────────────
+  // REINGEST MODE — DELETE old chunks (only after every insert succeeded)
+  // ─────────────────────────────────────────────────────────
+  //
+  // Safety invariants:
+  //   - INSERTs above run first; if any failed the script exits before
+  //     reaching here, leaving old chunks untouched (better than zero).
+  //   - "Old" = same scope+source_url with created_at < the cutoff we
+  //     captured BEFORE the first INSERT. Newly inserted chunks have
+  //     created_at >= cutoff so they're never matched.
+  //   - DELETE failure is logged as a warning, not fatal: at worst we
+  //     get duplicates which can be cleaned up manually.
+  if (reingestMode && reingestCutoffIso && inserted > 0 && sourceUrl) {
+    console.log(`[reingest] Removing old chunks where source_url=${sourceUrl} AND created_at<${reingestCutoffIso}...`);
+    const { error: delErr, count: delCount } = await supabase
+      .from("documents")
+      .delete({ count: "exact" })
+      .eq("scope", "global")
+      .eq("source_url", sourceUrl)
+      .lt("created_at", reingestCutoffIso);
+    if (delErr) {
+      console.warn(`[reingest] DELETE failed: ${delErr.message}. New chunks are in place; duplicates remain for manual cleanup.`);
+    } else {
+      console.log(`[reingest] Deleted ${delCount ?? 0} old chunks.`);
+    }
+  }
 }
 
 main().catch((err) => {

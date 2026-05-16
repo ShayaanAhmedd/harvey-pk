@@ -6,7 +6,9 @@ import {
   useEffect,
   forwardRef,
   useImperativeHandle,
+  useCallback,
 } from "react";
+import type { UploadedDocument } from "./DocumentBar";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 
 export type UIMode = "deep" | "fast" | "documents" | "premium";
@@ -27,6 +29,12 @@ const MODE_OPTIONS: {
   { mode: "premium",   icon: "✨", label: "Premium Mode",   description: "Maximum quality & reasoning" },
 ];
 
+export interface UploadResult {
+  file_name:   string;
+  totalChunks: number;
+  scope:       string;
+}
+
 interface Props {
   onSend: (content: string) => void;
   disabled: boolean;
@@ -35,6 +43,10 @@ interface Props {
   role: string | null;
   mode: UIMode;
   onModeChange: (mode: UIMode) => void;
+  onUploadSuccess?: (doc: UploadResult) => void;
+  activeDocName?: string | null;
+  documents?: UploadedDocument[];
+  onOpenVoiceMode?: () => void;
 }
 
 // ── Transcription helper ──────────────────────────────────────────────────────
@@ -64,13 +76,16 @@ async function transcribeBlob(blob: Blob): Promise<string> {
 }
 
 const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
-  { onSend, disabled, activeChatId, activeCaseId, role, mode, onModeChange },
+  { onSend, disabled, activeChatId, activeCaseId, role, mode, onModeChange, onUploadSuccess, activeDocName, documents = [], onOpenVoiceMode },
   ref
 ) {
   const [value, setValue] = useState("");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+  const attachRef = useRef<HTMLDivElement>(null);
 
   // ── Voice state ───────────────────────────────────────────────
   // dictateMode: records → transcribes → fills textarea (user manually sends)
@@ -114,6 +129,24 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
     }
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Close attach modal on outside click
+  useEffect(() => {
+    if (!attachOpen) return;
+    function onDown(e: MouseEvent) {
+      if (!attachRef.current?.contains(e.target as Node)) setAttachOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [attachOpen]);
+
+  const toggleDoc = useCallback((name: string) => {
+    setSelectedDocs((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name); else next.add(name);
+      return next;
+    });
   }, []);
 
   // Surface recorder-level errors in the voice error slot
@@ -160,6 +193,13 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
       if (!res.ok) {
         const json = await res.json().catch(() => ({}));
         setUploadError(json.error ?? "Upload failed");
+      } else {
+        const json = await res.json().catch(() => ({})) as UploadResult & { message?: string };
+        onUploadSuccess?.({
+          file_name:   file.name,
+          totalChunks: json.totalChunks ?? 0,
+          scope:       json.scope ?? (activeCaseId ? "case" : "global"),
+        });
       }
     } catch {
       setUploadError("Network error during upload");
@@ -233,7 +273,7 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
   const isBusy        = disabled || transcribing;
 
   return (
-    <div className="border-t border-gray-200 dark:border-neutral-800 chat-canvas px-4 py-4 transition-colors duration-300">
+    <div className="border-t border-gray-200/60 dark:border-neutral-800 bg-white/70 dark:bg-neutral-950/80 backdrop-blur-sm px-4 py-4 transition-all duration-300">
       <div className="max-w-3xl mx-auto">
         <div className="relative">
 
@@ -281,12 +321,102 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
             </div>
           )}
 
+          {/* ── Attach modal ───────────────────────────────────── */}
+          {attachOpen && (
+            <div
+              ref={attachRef}
+              className="absolute bottom-full left-0 mb-3 z-50 w-72
+                bg-white dark:bg-[#1a1a1a]
+                border border-gray-200 dark:border-neutral-800
+                rounded-xl shadow-2xl dark:shadow-black/50
+                overflow-hidden menu-in"
+            >
+              <div className="px-4 py-3 border-b border-gray-100 dark:border-neutral-800 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-700 dark:text-neutral-300">Attach documents</p>
+                <button
+                  onClick={() => setAttachOpen(false)}
+                  className="text-gray-400 hover:text-gray-600 dark:text-neutral-600 dark:hover:text-neutral-300 text-lg leading-none"
+                >×</button>
+              </div>
+              {documents.length === 0 ? (
+                <div className="px-4 py-5 text-center">
+                  <p className="text-xs text-gray-400 dark:text-neutral-600">No documents indexed yet.</p>
+                  <p className="text-xs text-gray-400 dark:text-neutral-600 mt-1">Upload a document to attach it.</p>
+                </div>
+              ) : (
+                <div className="p-1.5 max-h-60 overflow-y-auto">
+                  {documents.map((doc) => {
+                    const checked = selectedDocs.has(doc.file_name);
+                    return (
+                      <button
+                        key={doc.file_name}
+                        onClick={() => toggleDoc(doc.file_name)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors duration-150 ${
+                          checked
+                            ? "bg-indigo-50 dark:bg-indigo-900/20"
+                            : "hover:bg-gray-50 dark:hover:bg-neutral-800/60"
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
+                          checked
+                            ? "bg-indigo-600 border-indigo-600"
+                            : "border-gray-300 dark:border-neutral-600"
+                        }`}>
+                          {checked && (
+                            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-medium text-gray-700 dark:text-neutral-300 truncate">{doc.file_name}</p>
+                          <p className="text-[10px] text-gray-400 dark:text-neutral-600">{doc.totalChunks} sections</p>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {selectedDocs.size > 0 && (
+                <div className="px-4 py-2.5 border-t border-gray-100 dark:border-neutral-800 flex items-center justify-between">
+                  <span className="text-[10px] text-gray-400 dark:text-neutral-600">{selectedDocs.size} selected</span>
+                  <button
+                    onClick={() => { setSelectedDocs(new Set()); }}
+                    className="text-[10px] text-red-400 hover:text-red-600 dark:text-red-500"
+                  >
+                    Clear all
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Selected doc chips ──────────────────────────────── */}
+          {selectedDocs.size > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {Array.from(selectedDocs).map((name) => (
+                <span
+                  key={name}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-2.5 h-2.5 flex-shrink-0">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" />
+                  </svg>
+                  <span className="max-w-[120px] truncate">{name}</span>
+                  <button
+                    onClick={() => toggleDoc(name)}
+                    className="ml-0.5 text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-100 leading-none"
+                  >×</button>
+                </span>
+              ))}
+            </div>
+          )}
+
           {/* ── Input row ──────────────────────────────────────── */}
-          <div className={`flex items-end gap-2 rounded-2xl border shadow-sm px-4 py-3 transition-colors duration-300 ${
-            isBusy
-              ? "border-gray-200 dark:border-neutral-800 bg-gray-50 dark:bg-neutral-900"
-              : "border-gray-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 focus-within:border-gray-400 dark:focus-within:border-neutral-600"
-          }`}>
+          <div
+            className="flex items-end gap-2 rounded-2xl px-4 py-3 chat-input-glass"
+            style={{ opacity: isBusy ? 0.75 : 1 }}
+          >
 
             {/* Mode button */}
             <button
@@ -313,7 +443,9 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
                 isDictating   ? "Recording… tap mic to stop & transcribe"
                 : isVoicing   ? "Recording… tap voice to stop & send"
                 : transcribing ? "Transcribing…"
-                : "Ask about a case, law, section, or legal strategy…"
+                : activeDocName
+                  ? `Ask about ${activeDocName}…`
+                  : "Ask about a case, law, section, or legal strategy…"
               }
               disabled={isBusy}
               rows={1}
@@ -376,17 +508,48 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
               )}
             </button>
 
-            {/* Paperclip upload */}
+            {/* ── Live Voice button (realtime WebSocket voice) ── */}
+            {onOpenVoiceMode && (
+              <button
+                type="button"
+                onClick={onOpenVoiceMode}
+                disabled={isBusy}
+                title="Live Voice — talk with Harvey in real time"
+                aria-label="Open live voice mode"
+                className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 text-gray-400 dark:text-neutral-500 hover:text-indigo-500 dark:hover:text-indigo-400 disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                {/* Phone wave icon — distinct from mic/waveform */}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="w-4 h-4">
+                  <path d="M15.05 5A5 5 0 0119 8.95M15.05 1A9 9 0 0123 8.94M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6A19.79 19.79 0 012.12 4.18 2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
+                </svg>
+              </button>
+            )}
+
+            {/* Paperclip — opens attach modal (if docs exist) or file picker (upload) */}
             <button
               type="button"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading || !canUpload || !activeChatId}
+              onClick={() => {
+                if (documents.length > 0) {
+                  setAttachOpen((v) => !v);
+                } else {
+                  // No docs yet — open file upload picker directly
+                  if (canUpload && activeChatId) fileInputRef.current?.click();
+                }
+              }}
+              disabled={uploading || (!canUpload && documents.length === 0) || (!activeChatId && documents.length === 0)}
               title={
-                !activeChatId ? "Start a chat first"
+                documents.length > 0 ? "Attach indexed documents"
+                : !activeChatId ? "Start a chat first"
                 : !canUpload  ? "Link a case to upload documents"
                 : "Upload document"
               }
-              className="flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors duration-200"
+              className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center transition-all duration-200 ${
+                attachOpen
+                  ? "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400"
+                  : selectedDocs.size > 0
+                    ? "text-indigo-500 dark:text-indigo-400 hover:text-indigo-700"
+                    : "text-gray-400 dark:text-neutral-500 hover:text-gray-600 dark:hover:text-neutral-300 disabled:opacity-30 disabled:cursor-not-allowed"
+              }`}
             >
               {uploading ? (
                 <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
@@ -415,7 +578,8 @@ const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput(
             <button
               onClick={handleSend}
               disabled={isBusy || !value.trim()}
-              className="flex-shrink-0 w-8 h-8 rounded-full bg-gray-900 dark:bg-indigo-600 text-white flex items-center justify-center hover:bg-gray-700 dark:hover:bg-indigo-500 disabled:opacity-30 disabled:cursor-not-allowed transition-all duration-200"
+              className="btn-accent flex-shrink-0 w-8 h-8 rounded-full text-white flex items-center justify-center disabled:opacity-30 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
+              style={{ background: "var(--accent)" }}
               aria-label="Send message"
             >
               {isBusy ? (

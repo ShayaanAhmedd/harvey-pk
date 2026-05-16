@@ -43,17 +43,10 @@ export async function GET(request: Request) {
   const { data, error } = await query;
 
   if (error) {
-    console.error("[GET /api/documents] query error:", JSON.stringify({
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      scope,
-      caseId: caseId ?? null,
-      user_id: user.id,
-    }));
-    // Return empty array so DocumentPanel degrades gracefully (no blank screen)
+    console.error("[documents API] Supabase query error:", error.message, "| scope:", scope, "| caseId:", caseId);
     return NextResponse.json([]);
   }
 
+  console.log("[documents API] returning", (data ?? []).length, "docs | scope:", scope);
   return NextResponse.json(data ?? []);
 }

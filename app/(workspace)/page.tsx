@@ -20,7 +20,7 @@ export default async function WorkspacePage() {
     .maybeSingle();
 
   return (
-    <div className="h-screen overflow-hidden bg-white dark:bg-gray-950 transition-colors duration-300">
+    <div className="h-screen overflow-hidden bg-slate-100 dark:bg-slate-900 transition-colors duration-300">
       <WorkspaceShell
         userId={user!.id}
         userEmail={user!.email ?? ""}

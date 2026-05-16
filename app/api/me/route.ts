@@ -25,10 +25,6 @@ export async function GET() {
   } = await supabase.auth.getUser();
 
   if (authError) {
-    console.error("[GET /api/me] auth error:", JSON.stringify({
-      message: authError.message,
-      status: authError.status,
-    }));
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -43,13 +39,6 @@ export async function GET() {
     .maybeSingle();
 
   if (error) {
-    console.error("[GET /api/me] user_roles query error:", JSON.stringify({
-      message: error.message,
-      code: error.code,
-      details: error.details,
-      hint: error.hint,
-      user_id: user.id,
-    }));
     // Return null role rather than 500 — caller degrades gracefully
     return NextResponse.json({ role: null });
   }

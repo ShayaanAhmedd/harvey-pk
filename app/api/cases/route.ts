@@ -35,13 +35,6 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    console.error("[GET /api/cases] query error:", JSON.stringify({
-      message: error.message,
-      code:    error.code,
-      details: error.details,
-      hint:    error.hint,
-      user_id: user.id,
-    }));
     // Return 200 + empty array so the UI degrades gracefully
     // (case selector shows "no cases", upload stays functional for Global KB)
     return NextResponse.json([]);
@@ -103,13 +96,6 @@ export async function POST(req: Request) {
     .single();
 
   if (error) {
-    console.error("[POST /api/cases] insert error:", JSON.stringify({
-      message: error.message,
-      code:    error.code,
-      details: error.details,
-      hint:    error.hint,
-      user_id: user.id,
-    }));
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 

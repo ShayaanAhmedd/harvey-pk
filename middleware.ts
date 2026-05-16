@@ -59,10 +59,7 @@ export async function middleware(request: NextRequest) {
   // getSession() trusts the client cookie without re-validating with
   // Supabase servers, making it spoofable. getUser() always hits the
   // Supabase Auth server to confirm the token is legitimate.
-  const {
-    data: { user },
-    error: getUserError,
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
 

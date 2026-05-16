@@ -22,7 +22,6 @@ export async function GET(_req: Request, { params }: Params) {
     .maybeSingle();
 
   if (chatError) {
-    console.error("[GET /api/chats/:chatId] chat fetch error:", chatError);
     return NextResponse.json({ error: chatError.message }, { status: 500 });
   }
   if (!chat) {
@@ -37,7 +36,6 @@ export async function GET(_req: Request, { params }: Params) {
     .order("created_at", { ascending: true });
 
   if (msgError) {
-    console.error("[GET /api/chats/:chatId] messages fetch error:", msgError);
     return NextResponse.json({ error: msgError.message }, { status: 500 });
   }
 
@@ -70,7 +68,6 @@ export async function PATCH(request: Request, { params }: Params) {
     .maybeSingle();
 
   if (error) {
-    console.error("[PATCH /api/chats/:chatId] update error:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   if (!data) {

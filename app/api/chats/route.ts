@@ -23,7 +23,6 @@ export async function GET() {
   } = await supabase.auth.getUser();
 
   if (authError) {
-    console.error("[GET /api/chats] auth error:", authError);
     return NextResponse.json({ error: "Auth error", details: authError.message }, { status: 401 });
   }
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -36,7 +35,6 @@ export async function GET() {
 
   if (error) {
     const detail = dbError("chats.select", error);
-    console.error("[GET /api/chats]", JSON.stringify(detail));
     return NextResponse.json({ error: "Database query failed", detail }, { status: 500 });
   }
 
@@ -66,7 +64,6 @@ export async function POST(request: Request) {
 
   if (error) {
     const detail = dbError("chats.insert", error);
-    console.error("[POST /api/chats]", JSON.stringify(detail));
     return NextResponse.json({ error: "Database query failed", detail }, { status: 500 });
   }
 
